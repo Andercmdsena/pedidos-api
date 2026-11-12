@@ -1,0 +1,62 @@
+{
+  "pipeline": {
+    "name": "pedidos-api-pipeline",
+    "pipelineType": "V2",
+    "executionMode": "QUEUED",
+    "roleArn": "arn:aws:iam::__ACCOUNT__:role/RoleForCodepipeline",
+    "artifactStore": { "type": "S3", "location": "__BUCKET__" },
+    "stages": [
+      {
+        "name": "Source",
+        "actions": [
+          {
+            "name": "Artefacto-CI",
+            "actionTypeId": { "category": "Source", "owner": "AWS", "provider": "S3", "version": "1" },
+            "configuration": {
+              "S3Bucket": "__BUCKET__",
+              "S3ObjectKey": "pedidos-api.zip",
+              "PollForSourceChanges": "false"
+            },
+            "outputArtifacts": [ { "name": "PaqueteLambda" } ],
+            "runOrder": 1
+          }
+        ]
+      },
+      {
+        "name": "Deploy-Staging",
+        "actions": [
+          {
+            "name": "Lambda-Staging",
+            "actionTypeId": { "category": "Deploy", "owner": "AWS", "provider": "Lambda", "version": "1" },
+            "configuration": { "FunctionName": "pedidos-api-staging" },
+            "inputArtifacts": [ { "name": "PaqueteLambda" } ],
+            "runOrder": 1
+          }
+        ]
+      },
+      {
+        "name": "Aprobacion",
+        "actions": [
+          {
+            "name": "Aprobar-Produccion",
+            "actionTypeId": { "category": "Approval", "owner": "AWS", "provider": "Manual", "version": "1" },
+            "configuration": { "CustomData": "Revisar /health y /swagger de staging antes de aprobar el paso a produccion." },
+            "runOrder": 1
+          }
+        ]
+      },
+      {
+        "name": "Deploy-Produccion",
+        "actions": [
+          {
+            "name": "Lambda-Produccion",
+            "actionTypeId": { "category": "Deploy", "owner": "AWS", "provider": "Lambda", "version": "1" },
+            "configuration": { "FunctionName": "pedidos-api-prod" },
+            "inputArtifacts": [ { "name": "PaqueteLambda" } ],
+            "runOrder": 1
+          }
+        ]
+      }
+    ]
+  }
+}

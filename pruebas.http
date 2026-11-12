@@ -1,0 +1,32 @@
+@base = http://localhost:5000
+
+### Estado
+GET {{base}}/health
+
+### Crear pedido
+POST {{base}}/api/pedidos
+Content-Type: application/json
+
+{
+  "cliente": { "nombre": "Ana Pérez", "email": "ana.perez@correo.com", "telefono": "3001234567" },
+  "items": [
+    { "producto": "Teclado mecánico", "cantidad": 1, "precioUnitario": 250000 },
+    { "producto": "Mouse inalámbrico", "cantidad": 2, "precioUnitario": 80000 }
+  ],
+  "direccionEnvio": "Calle 123 #45-67, Bogotá"
+}
+
+### Listar (filtrar y ordenar)
+GET {{base}}/api/pedidos?estado=Pendiente&ordenarPor=total&direccion=desc
+
+### Avanzar estado (reemplaza {id})
+PATCH {{base}}/api/pedidos/{id}/estado
+Content-Type: application/json
+
+{ "estado": "EnProceso" }
+
+### Saltar etapas -> 409
+PATCH {{base}}/api/pedidos/{id}/estado
+Content-Type: application/json
+
+{ "estado": "Entregado" }
