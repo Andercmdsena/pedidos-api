@@ -1,0 +1,76 @@
+name: CI-CD Pedidos API
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  build:
+    name: Build y pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Caché de NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+
+      - name: Restaurar
+        run: |
+          dotnet restore src/Pedidos.Api/Pedidos.Api.csproj
+          dotnet restore tests/Pedidos.Api.Tests/Pedidos.Api.Tests.csproj
+
+      - name: Compilar
+        run: dotnet build src/Pedidos.Api/Pedidos.Api.csproj -c Release --no-restore
+
+      - name: Pruebas unitarias
+        run: dotnet test tests/Pedidos.Api.Tests/Pedidos.Api.Tests.csproj -c Release --logger "trx;LogFileName=resultados.trx" --logger "console;verbosity=normal" --results-directory test-results
+
+      - name: Publicar paquete Lambda
+        run: |
+          dotnet publish src/Pedidos.Api/Pedidos.Api.csproj -c Release -r linux-x64 --self-contained false -o publish
+          (cd publish && zip -qr ../pedidos-api.zip .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pedidos-api
+          path: pedidos-api.zip
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resultados-pruebas
+          path: test-results
+
+  entregar-a-codepipeline:
+    name: Entregar a CodePipeline
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: pedidos-api }
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Subir artefacto a S3 e iniciar el pipeline
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          aws s3 cp pedidos-api.zip "s3://pedidos-api-artefactos-${ACCOUNT}/pedidos-api.zip" \
+            --metadata commit=${GITHUB_SHA::7},run=${{ github.run_number }}
+          aws codepipeline start-pipeline-execution --name pedidos-api-pipeline
